@@ -1,0 +1,25 @@
+### Obtener mensaje de bienvenida (ruta de prueba básica)
+GET http://localhost:9000/
+
+### Insertar un nuevo mensaje en el flujo
+POST http://localhost:9000/api/messages
+Content-Type: application/json
+
+{
+  "flowId": "5.2",
+  "identifier": "5.2",
+  "content": "insertado7"
+}
+
+### Eliminar un mensaje del flujo (por flowId y identifier)
+DELETE http://localhost:9000/api/messages/1/1.1
+
+###
+PUT http://localhost:9000/api/messages/5.2/5.2.1
+Content-Type: application/json
+
+{
+  "identifier": "5.2.2", 
+  "content": "Contenido actualizado"  
+}
+
