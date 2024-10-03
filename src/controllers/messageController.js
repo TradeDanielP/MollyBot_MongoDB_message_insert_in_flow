@@ -167,6 +167,92 @@ const deleteMessagesByFlowId = async (flowId) => {
   return await Message.deleteMany({ flowId: flowId });
 };
 
+/* Intercambiar posiciones de dos flujos */
+async function exchangeFlows(flowIdA, flowIdB) {
+  // Paso 1: Validar que ambos flowId existan en la base de datos
+  const flowAExists = await Message.findOne({ flowId: flowIdA });
+  const flowBExists = await Message.findOne({ flowId: flowIdB });
+
+  if (!flowAExists || !flowBExists) {
+    return { success: false, message: "Uno o ambos flowIds no existen." };
+  }
+
+  // Paso 2: Actualizar flowIdA a un valor temporal (99)
+  await Message.updateMany(
+    { flowId: flowIdA },
+    [
+      {
+        $set: {
+          flowId: "99", // Flow temporal
+          identifier: {
+            $concat: [
+              "99.", // Cambiamos el flowId del identifier a 99 y conservamos el formato con el punto
+              {
+                $substrCP: [
+                  "$identifier", 
+                  2, // Cortamos desde el segundo carácter en adelante
+                  { $subtract: [{ $strLenCP: "$identifier" }, 2] } // Longitud restante menos 2
+                ]
+              }
+            ]
+          }
+        }
+      }
+    ]
+  );
+
+  // Paso 3: Actualizar flowIdB a flowIdA
+  await Message.updateMany(
+    { flowId: flowIdB },
+    [
+      {
+        $set: {
+          flowId: flowIdA,
+          identifier: {
+            $concat: [
+              flowIdA.toString() + ".", // Cambiamos el primer número al flowIdA y conservamos el punto
+              {
+                $substrCP: [
+                  "$identifier",
+                  2, // Cortamos desde el segundo carácter en adelante
+                  { $subtract: [{ $strLenCP: "$identifier" }, 2] }
+                ]
+              }
+            ]
+          }
+        }
+      }
+    ]
+  );
+
+  // Paso 4: Actualizar el flowId temporal (99) a flowIdB
+  await Message.updateMany(
+    { flowId: "99" },
+    [
+      {
+        $set: {
+          flowId: flowIdB,
+          identifier: {
+            $concat: [
+              flowIdB.toString() + ".", // Cambiamos el primer número al flowIdB y conservamos el punto
+              {
+                $substrCP: [
+                  "$identifier",
+                  3, // Ahora cortamos desde el tercer carácter (porque empieza con '99.')
+                  { $subtract: [{ $strLenCP: "$identifier" }, 3] }
+                ]
+              }
+            ]
+          }
+        }
+      }
+    ]
+  );
+
+  return { success: true, message: `Los flujos ${flowIdA} y ${flowIdB} fueron intercambiados correctamente.` };
+}
+
+
 /* Actualizar un Mensaje */
 async function updateMessage(flowId, oldIdentifier, updatedData) {
     const { identifier: newIdentifier, content } = updatedData;
@@ -223,5 +309,6 @@ module.exports = {
   insertMessage,
   deleteMessage,
   deleteMessagesByFlowId,
+  exchangeFlows,
   updateMessage
 };

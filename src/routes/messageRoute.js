@@ -1,5 +1,5 @@
 const express = require("express");
-const { insertMessage, deleteMessage, deleteMessagesByFlowId, updateMessage } = require("../controllers/messageController");
+const { insertMessage, deleteMessage, deleteMessagesByFlowId, exchangeFlows, updateMessage } = require("../controllers/messageController");
 const MessageSchema = require("../models/messageModel")
 
 const router = express.Router();
@@ -56,6 +56,29 @@ router.delete("/:flowId", async (req, res) => {
   }
 });
 
+// Ruta para intercambiar los flujos
+router.put('/swap/:flowIdA/:flowIdB', async (req, res) => {
+  const { flowIdA, flowIdB } = req.params;
+
+  // Validar que los flowId no sean vacíos
+  if (!flowIdA || !flowIdB) {
+    return res.status(400).json({ message: "Ambos flowIds son requeridos." });
+  }
+
+  try {
+    // Invocar la función exchangeFlows
+    const result = await exchangeFlows(flowIdA, flowIdB);
+
+    if (result.success) {
+      return res.status(200).json({ message: result.message });
+    } else {
+      return res.status(400).json({ message: result.message });
+    }
+  } catch (error) {
+    console.error('Error al intercambiar los flujos:', error);
+    return res.status(500).json({ message: "Ocurrió un error durante el intercambio de flujos." });
+  }
+});
 
 
 router.put("/messages/:flowId/:oldIdentifier", async (req, res) => {
