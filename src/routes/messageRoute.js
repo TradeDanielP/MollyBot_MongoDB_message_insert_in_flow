@@ -1,5 +1,5 @@
 const express = require("express");
-const { insertMessage, deleteMessage, deleteMessagesByFlowId, exchangeFlows, updateMessage } = require("../controllers/messageController");
+const { insertMessage, insertMainFlow, deleteMessage, deleteMessagesByFlowId, exchangeFlows, updateMessage } = require("../controllers/messageController");
 const MessageSchema = require("../models/messageModel")
 
 const router = express.Router();
@@ -15,6 +15,25 @@ router.post("/", async (req, res) => {
     });
   } catch (error) {
     res.status(500).json({ error: 'Error al insertar mensaje.', error });
+  }
+});
+
+// Ruta para insertar flujos principales
+router.post('/insert-main-flow', async (req, res) => {
+  try {
+    const { flowId, content } = req.body;
+
+    // Llamada a la función insertMainFlow
+    const result = await insertMainFlow(flowId, content);
+
+    if (result.success) {
+      return res.status(200).json({ message: result.message });
+    } else {
+      return res.status(400).json({ error: result.message });
+    }
+  } catch (error) {
+    console.error('Error al insertar el flujo principal:', error);
+    return res.status(500).json({ error: 'Error interno del servidor.' });
   }
 });
 
@@ -79,7 +98,6 @@ router.put('/swap/:flowIdA/:flowIdB', async (req, res) => {
     return res.status(500).json({ message: "Ocurrió un error durante el intercambio de flujos." });
   }
 });
-
 
 router.put("/messages/:flowId/:oldIdentifier", async (req, res) => {
   const { flowId, oldIdentifier } = req.params;

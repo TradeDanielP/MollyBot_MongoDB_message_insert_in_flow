@@ -4,6 +4,12 @@ const Message = require("../models/messageModel");
 async function insertMessage(flowId, newIdentifier, content) {
   // 1. Dividimos el identificador en niveles (partes)
   const newIdentifierArray = newIdentifier.split('.');
+
+   // Validamos que no esté intentando insertar en un flujo principal (1.x)
+   if (newIdentifierArray.length <= 2) {
+    return { success: false, message: "No se puede insertar en el flujo principal. Use el endpoint de flujos principales." };
+  }
+
   const newPrefix = newIdentifierArray.slice(0, -1).join('.'); // Prefijo: guarda el array menos la última posición
 
   // 2. Construimos una expresión regular que capture los mensajes en el mismo subnivel y subniveles
@@ -80,6 +86,62 @@ async function insertMessage(flowId, newIdentifier, content) {
 
   await newMessage.save();
   return newMessage;
+}
+
+/* Insertar un flujo principal */
+async function insertMainFlow(newFlowId, content) {
+  // 1. Verificamos si ya existe el flowId principal (1.x) que se está intentando insertar
+  const lastMessage = await Message.findOne({ flowId: newFlowId }).sort({ identifier: -1 }).exec();
+
+  if (lastMessage) {
+    return { success: false, message: `El flujo principal 1.${newFlowId} ya existe.` };
+  }
+
+  // 2. Construimos el nuevo identifier para el flujo principal (1.x)
+  const newIdentifier = `1.${newFlowId}`;
+
+  // 3. Actualizamos todos los flujos principales existentes cuyo identifier sea mayor o igual al nuevo (1.x)
+  await Message.updateMany(
+    {
+      identifier: { $regex: /^1\.(\d+)$/ }, // Filtra solo flujos principales (1.x)
+      $expr: {
+        $gte: [
+          { $toInt: { $arrayElemAt: [{ $split: ["$identifier", "."] }, 1] } },
+          newFlowId
+        ]
+      }
+    },
+    [{
+      $set: {
+        flowId: {
+          $toString: {
+            $add: [{ $toInt: "$flowId" }, 1] // Incrementa el flowId en 1
+          }
+        },
+        identifier: {
+          $concat: [
+            "1.",
+            { $toString: {
+              $add: [
+                { $toInt: { $arrayElemAt: [{ $split: ["$identifier", "."] }, 1] } },
+                1 // Incrementa el segundo nivel (1.x) en 1
+              ]
+            }}
+          ]
+        }
+      }
+    }]
+  );
+
+  // 4. Insertamos el nuevo flujo principal con el flowId y el identifier generado
+  const newFlow = new Message({
+    flowId: newFlowId,
+    identifier: newIdentifier,
+    content: content
+  });
+
+  await newFlow.save();
+  return { success: true, message: `El flujo principal 1.${newFlowId} ha sido creado exitosamente.` };
 }
 
 /* Eliminar un Mensaje */
@@ -186,12 +248,13 @@ async function exchangeFlows(flowIdA, flowIdB) {
           flowId: "99", // Flow temporal
           identifier: {
             $concat: [
-              "99.", // Cambiamos el flowId del identifier a 99 y conservamos el formato con el punto
+              "1.", // Mantener siempre 1
+              { $arrayElemAt: [{ $split: ["$identifier", "."] }, 1] }, // Obtener el segundo elemento (2)
               {
                 $substrCP: [
                   "$identifier", 
-                  2, // Cortamos desde el segundo carácter en adelante
-                  { $subtract: [{ $strLenCP: "$identifier" }, 2] } // Longitud restante menos 2
+                  { $add: [{ $strLenCP: "1." }, 1] }, // Cortar desde después del segundo número
+                  { $subtract: [{ $strLenCP: "$identifier" }, { $add: [{ $strLenCP: "1."}, 1] }] } // Longitud restante
                 ]
               }
             ]
@@ -210,12 +273,13 @@ async function exchangeFlows(flowIdA, flowIdB) {
           flowId: flowIdA,
           identifier: {
             $concat: [
-              flowIdA.toString() + ".", // Cambiamos el primer número al flowIdA y conservamos el punto
+              "1.", // Mantener siempre 1
+              flowIdA.toString(), // Cambiar a flowIdA como segundo nivel
               {
                 $substrCP: [
                   "$identifier",
-                  2, // Cortamos desde el segundo carácter en adelante
-                  { $subtract: [{ $strLenCP: "$identifier" }, 2] }
+                  { $add: [{ $strLenCP: "1." }, 1] }, // Cortar desde después del segundo número
+                  { $subtract: [{ $strLenCP: "$identifier" }, { $add: [{ $strLenCP: "1."}, 1] }] }
                 ]
               }
             ]
@@ -234,12 +298,13 @@ async function exchangeFlows(flowIdA, flowIdB) {
           flowId: flowIdB,
           identifier: {
             $concat: [
-              flowIdB.toString() + ".", // Cambiamos el primer número al flowIdB y conservamos el punto
+              "1.", // Mantener siempre 1
+              flowIdB.toString(), // Cambiar a flowIdB como segundo nivel
               {
                 $substrCP: [
                   "$identifier",
-                  3, // Ahora cortamos desde el tercer carácter (porque empieza con '99.')
-                  { $subtract: [{ $strLenCP: "$identifier" }, 3] }
+                  { $add: [{ $strLenCP: "1." }, 1] }, // Cortar desde después del segundo número
+                  { $subtract: [{ $strLenCP: "$identifier" }, { $add: [{ $strLenCP: "1."}, 1] }] }
                 ]
               }
             ]
@@ -251,7 +316,6 @@ async function exchangeFlows(flowIdA, flowIdB) {
 
   return { success: true, message: `Los flujos ${flowIdA} y ${flowIdB} fueron intercambiados correctamente.` };
 }
-
 
 /* Actualizar un Mensaje */
 async function updateMessage(flowId, oldIdentifier, updatedData) {
@@ -307,6 +371,7 @@ async function updateMessage(flowId, oldIdentifier, updatedData) {
 
 module.exports = {
   insertMessage,
+  insertMainFlow,
   deleteMessage,
   deleteMessagesByFlowId,
   exchangeFlows,
